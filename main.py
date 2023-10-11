@@ -3,7 +3,7 @@ import time
 import os
 import glob
 from filecmp import cmp
-
+# Won't work because can't find chromedriver using the api
 # selenium 4
 from selenium import webdriver
 import selenium.webdriver.chrome.service
