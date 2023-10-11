@@ -8,6 +8,9 @@ from filecmp import cmp
 from selenium import webdriver
 import selenium.webdriver.chrome.service
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.utils import ChromeType
+
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
