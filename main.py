@@ -4,8 +4,10 @@ import os
 import glob
 from filecmp import cmp
 
+# selenium 4
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+import selenium.webdriver.chrome.service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
@@ -13,44 +15,48 @@ from selenium.webdriver.support.ui import Select
 
 # Hardcoded login credentials
 enrollment = "02-134212-019"  # Replace with your enrollment number
-password = "QuantumX@1"  # Replace with your password
+password = "Machine&1"  # Replace with your password
 institute = "Karachi Campus"  # Replace with your institute option
 
-# Subject URLs and assignment file names
-subject_urls = {
-    "Critical Thinking": "https://lms.bahria.edu.pk/Student/Assignments.php?s=MjAyMzE%3D&oc=MTA2NzY2",
-    "Database Management Systems": "https://lms.bahria.edu.pk/Student/Assignments.php?s=MjAyMzE%3D&oc=MTA2NzY4",
-    "Database Management Systems Lab": "https://lms.bahria.edu.pk/Student/Assignments.php?s=MjAyMzE%3D&oc=MTA2Nzcw",
-    "Data Communication & Networking": "https://lms.bahria.edu.pk/Student/Assignments.php?s=MjAyMzE%3D&oc=MTA2Nzcy",
-    "Data Communication & Networking Lab": "https://lms.bahria.edu.pk/Student/Assignments.php?s=MjAyMzE%3D&oc=MTA2Nzc0",
-    "Theory of Automata": "https://lms.bahria.edu.pk/Student/Assignments.php?s=MjAyMzE%3D&oc=MTA2Nzc2",
-    "Differential Equations": "https://lms.bahria.edu.pk/Student/Assignments.php?s=MjAyMzE%3D&oc=MTA2Nzc4"
+# Course Names
+courses = {
+    "Operating Systems"
+    "Operating Systems Lab"
+    "Software Engineering"
+    "Compiler Construction"
+    "Compiler Construction Lab"
+    "Design & Analysis of Algorithms"
+    "Linear Algebra"
+    "Islamic Studies"
 }
 
+# Assignment file names
 assignment_files = {
-    "Critical Thinking": ["CT.pdf", "CT.docx"],
-    "Database Management Systems": ["DBMS.pdf", "DBMS.docx"],
-    "Database Management Systems Lab": ["DBMS_Lab.pdf", "DBMS_Lab.docx"],
-    "Data Communication & Networking": ["DCN.pdf", "DCN.docx"],
-    "Data Communication & Networking Lab": ["DCN_Lab.pdf", "DCN_Lab.docx"],
-    "Theory of Automata": ["Automata.pdf", "Automata.docx"],
-    "Differential Equations": ["DE.pdf", "DE.docx"]
-    # Add more subjects and assignment file names as needed
+    "Operating Systems": ["OS.pdf", "OS.docx"],
+    "Operating Systems Lab": ["OS_Lab.pdf", "OS_Lab.docx"],
+    "Software Engineering": ["SE.pdf", "SE.docx"],
+    "Compiler Construction": ["CC.pdf", "CC.docx"],
+    "Compiler Construction Lab": ["CC_Lab.pdf", "CC_Lab.docx"],
+    "Design & Analysis of Algorithms": ["DAA.pdf", "DAA.docx"],
+    "Linear Algebra": ["LA.pdf", "LA.docx"],
+    "Islamic Studies": ["ISL.pdf", "ISL.docx"]
+    # Add more courses and assignment file names as needed
 }
 # Specify the path to the ChromeDriver executable
-chrome_driver_path = "chromedriver.exe"
+# chrome_driver_path = "chromedriver.exe"
 
 # Create a Service object
-service = Service(chrome_driver_path)
+# service = Service(chrome_driver_path)
 
 # Create Chrome options
-chrome_options = webdriver.ChromeOptions()
+# chrome_options = webdriver.ChromeOptions()
 
 # Add options as needed
 # chrome_options.add_argument("--headless")  # Run in headless mode (no GUI)
 
 # Create a webdriver instance
-driver = webdriver.Chrome(service=service, options=chrome_options)
+driver = webdriver.Chrome(service=selenium.webdriver.chrome.service.Service(ChromeDriverManager().install()))
+# driver = webdriver.Chrome(service=service, options=chrome_options)
 
 # Login to the student management system
 driver.get("https://cms.bahria.edu.pk/Logins/Student/Login.aspx")
@@ -66,7 +72,7 @@ institute_select.select_by_visible_text(institute)
 
 driver.find_element(By.ID, "BodyPH_btnLogin").click()
 
-time.sleep(2)  # Wait for the page to load
+time.sleep(1)  # Wait for the page to load
 
 # Open the LMS
 driver.find_element(By.LINK_TEXT, "Go To LMS").click()
@@ -79,17 +85,24 @@ wait.until(lambda drive: drive.execute_script("return document.readyState") == "
 # Switch to the new tab with LMS
 driver.switch_to.window(driver.window_handles[-1])
 
-# Iterate over the subject URLs and assignment files
-for subject, url in subject_urls.items():
-    if subject in assignment_files:
-        assignment_file = assignment_files[subject]
+# Open the LMS Assignments page
+driver.get("https://lms.bahria.edu.pk/Student/Assignments.php")
+
+wait.until(lambda drive: drive.execute_script("return document.readyState") == "complete")
+
+# Iterate over the courses and assignment files
+for course in courses:
+    if course in assignment_files:
+        assignment_file = assignment_files[course]
         for file_name in assignment_file:
             file_path = os.path.abspath(file_name)
             if os.path.exists(file_path):
-                # Open the subject URL
-                driver.get(url)
+                # Locate the Course Dropdown menu
+                course_dropdown = Select(driver.find_element(By.ID, "courseId"))
+                # Select the desire course by visible text
+                course_dropdown.select_by_visible_text(course)
+                wait.until(lambda drive: drive.execute_script("return document.readyState") == "complete")
 
-                time.sleep(2)  # Wait for the page to load
                 # Wait for the submit button to be clickable
                 submit_button = wait.until(ec.element_to_be_clickable((By.CSS_SELECTOR, "td a.text-red")))
 
@@ -115,6 +128,7 @@ for subject, url in subject_urls.items():
                 # Verify the uploaded assignment
                 submission_buttons = wait.until(ec.visibility_of_all_elements_located((By.LINK_TEXT, "Submission")))
                 submission_buttons[-1].click()
+                driver.get("https://lms.bahria.edu.pk/Student/Assignments.php")
                 time.sleep(5)
                 # # Determine the file extension
                 # uploaded_file_extension = os.path.splitext(file_path)[1].lower()
@@ -156,9 +170,9 @@ for subject, url in subject_urls.items():
                     print(f"No matching file found for pattern '{file_pattern}'.")
 
             else:
-                print(f"Assignment file '{file_name}' does not exist for subject '{subject}'.")
+                print(f"Assignment file '{file_name}' does not exist for '{course}'.")
     else:
-        print(f"No assignment files specified for subject '{subject}'.")
+        print(f"No assignment files specified for '{course}'.")
 
 # Close the browser
 driver.quit()
