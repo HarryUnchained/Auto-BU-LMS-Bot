@@ -65,8 +65,8 @@ class LMSUploader:
             return
 
         # For simplicity, using hardcoded enrollment and password
-        self.enrollment = "02-134212-019"
-        self.password = "Machine&1"
+        self.enrollment = "02-134212-000"
+        self.password = "Password"
 
         self.current_user = hashlib.sha256((self.enrollment + self.password).encode()).hexdigest()
 
