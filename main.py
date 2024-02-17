@@ -1,181 +1,290 @@
-import re
-import time
-import os
-import glob
-from filecmp import cmp
-# Won't work because can't find chromedriver using the api
-# selenium 4
+import tkinter as tk
+from tkinter import filedialog, simpledialog, messagebox
 from selenium import webdriver
-import selenium.webdriver.chrome.service
+from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.core.utils import ChromeType
-
-from selenium.webdriver.chrome.service import Service
+from webdriver_manager.core.os_manager import ChromeType
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.support.ui import Select
+from selenium.common.exceptions import NoSuchElementException
+import json
+import os
+import hashlib
+import threading
 
-# Hardcoded login credentials
-enrollment = "02-134212-019"  # Replace with your enrollment number
-password = "Machine&1"  # Replace with your password
-institute = "Karachi Campus"  # Replace with your institute option
 
-# Course Names
-courses = {
-    "Operating Systems"
-    "Operating Systems Lab"
-    "Software Engineering"
-    "Compiler Construction"
-    "Compiler Construction Lab"
-    "Design & Analysis of Algorithms"
-    "Linear Algebra"
-    "Islamic Studies"
-}
+class LMSUploader:
+    def __init__(self):
+        self.assignment_uploader = None
+        self.institute = None
+        self.password = None
+        self.enrollment = None
+        self.credentials_file = "credentials.json"
+        self.current_user = None
+        self.courses = {}
 
-# Assignment file names
-assignment_files = {
-    "Operating Systems": ["OS.pdf", "OS.docx"],
-    "Operating Systems Lab": ["OS_Lab.pdf", "OS_Lab.docx"],
-    "Software Engineering": ["SE.pdf", "SE.docx"],
-    "Compiler Construction": ["CC.pdf", "CC.docx"],
-    "Compiler Construction Lab": ["CC_Lab.pdf", "CC_Lab.docx"],
-    "Design & Analysis of Algorithms": ["DAA.pdf", "DAA.docx"],
-    "Linear Algebra": ["LA.pdf", "LA.docx"],
-    "Islamic Studies": ["ISL.pdf", "ISL.docx"]
-    # Add more courses and assignment file names as needed
-}
-# Specify the path to the ChromeDriver executable
-# chrome_driver_path = "chromedriver.exe"
+        self.root = tk.Tk()
+        self.root.title("LMS Uploader")
+        self.root.geometry("500x400")
 
-# Create a Service object
-# service = Service(chrome_driver_path)
+        # Login Frame
+        self.login_frame = tk.Frame(self.root)
+        self.login_frame.pack(padx=10, pady=10)
+        tk.Label(self.login_frame, text="Institute:").grid(row=0, column=0)
+        self.institute_var = tk.StringVar()
+        self.institute_var.set("Select Institute")
+        self.institute_dropdown = tk.OptionMenu(self.login_frame, self.institute_var,
+                                                "Health Sciences Campus (Karachi)",
+                                                "IPP (Karachi)",
+                                                "Islamabad E-8 Campus",
+                                                "Islamabad H-11 Campus",
+                                                "Karachi Campus",
+                                                "Lahore Campus",
+                                                "NCMPR",
+                                                "PN Nursing College",
+                                                "PN School Of Logistics")
+        self.institute_dropdown.grid(row=0, column=1)
+        tk.Button(self.login_frame, text="Login", command=self.login).grid(row=3, column=0, columnspan=2)
 
-# Create Chrome options
-# chrome_options = webdriver.ChromeOptions()
+        # Main Menu Frame
+        self.main_menu_frame = tk.Frame(self.root)
+        tk.Button(self.main_menu_frame, text="Add/Edit Courses", command=self.edit_courses).pack(pady=10)
+        tk.Button(self.main_menu_frame, text="Upload Assignment", command=self.upload_assignment).pack(pady=10)
+        tk.Button(self.main_menu_frame, text="Logout", command=self.logout).pack(pady=10)
+        self.main_menu_frame.pack_forget()
 
-# Add options as needed
-# chrome_options.add_argument("--headless")  # Run in headless mode (no GUI)
+        self.root.mainloop()
 
-# Create a webdriver instance
-driver = webdriver.Chrome(service=selenium.webdriver.chrome.service.Service(ChromeDriverManager().install()))
-# driver = webdriver.Chrome(service=service, options=chrome_options)
+    def login(self):
+        self.institute = self.institute_var.get()
 
-# Login to the student management system
-driver.get("https://cms.bahria.edu.pk/Logins/Student/Login.aspx")
+        if not self.institute:
+            messagebox.showerror("Error", "Please select an institute.")
+            return
 
-enrollment_input = driver.find_element(By.ID, "BodyPH_tbEnrollment")
-enrollment_input.send_keys(enrollment)
+        # For simplicity, using hardcoded enrollment and password
+        self.enrollment = "02-134212-019"
+        self.password = "Machine&1"
 
-password_input = driver.find_element(By.ID, "BodyPH_tbPassword")
-password_input.send_keys(password)
+        self.current_user = hashlib.sha256((self.enrollment + self.password).encode()).hexdigest()
 
-institute_select = Select(driver.find_element(By.ID, "BodyPH_ddlInstituteID"))
-institute_select.select_by_visible_text(institute)
+        self.show_main_menu()
 
-driver.find_element(By.ID, "BodyPH_btnLogin").click()
+    def show_main_menu(self):
+        self.login_frame.pack_forget()
+        self.load_courses()
+        self.main_menu_frame.pack(padx=10, pady=10)
 
-time.sleep(1)  # Wait for the page to load
+    def load_courses(self):
+        if os.path.exists(self.credentials_file):
+            with open(self.credentials_file, "r") as f:
+                all_data = json.load(f)
 
-# Open the LMS
-driver.find_element(By.LINK_TEXT, "Go To LMS").click()
-
-# Wait until the page has finished loading completely
-wait = WebDriverWait(driver, 30)  # Adjust the timeout as needed
-
-wait.until(lambda drive: drive.execute_script("return document.readyState") == "complete")
-
-# Switch to the new tab with LMS
-driver.switch_to.window(driver.window_handles[-1])
-
-# Open the LMS Assignments page
-driver.get("https://lms.bahria.edu.pk/Student/Assignments.php")
-
-wait.until(lambda drive: drive.execute_script("return document.readyState") == "complete")
-
-# Iterate over the courses and assignment files
-for course in courses:
-    if course in assignment_files:
-        assignment_file = assignment_files[course]
-        for file_name in assignment_file:
-            file_path = os.path.abspath(file_name)
-            if os.path.exists(file_path):
-                # Locate the Course Dropdown menu
-                course_dropdown = Select(driver.find_element(By.ID, "courseId"))
-                # Select the desire course by visible text
-                course_dropdown.select_by_visible_text(course)
-                wait.until(lambda drive: drive.execute_script("return document.readyState") == "complete")
-
-                # Wait for the submit button to be clickable
-                submit_button = wait.until(ec.element_to_be_clickable((By.CSS_SELECTOR, "td a.text-red")))
-
-                # Click the submit button
-                submit_button.click()
-                # Select the file to upload
-                file_input = driver.find_element(By.ID, "exampleInputFile")
-                file_input.send_keys(file_path)
-
-                # Wait for the modal footer to be visible
-                modal_footer = wait.until(ec.visibility_of_element_located((By.CLASS_NAME, "modal-footer")))
-
-                # Find the submit button within the modal footer
-                submit_button = modal_footer.find_element(By.CSS_SELECTOR, "button[type='submit']")
-
-                # Check if the submit button is enabled
-                if submit_button.is_enabled():
-                    # Click the submit button
-                    submit_button.click()
+            if self.current_user in all_data:
+                user_data = all_data[self.current_user]
+                if "courses" in user_data:
+                    self.courses = user_data["courses"]
                 else:
-                    print("Submit button is disabled.")
+                    self.courses = {}
 
-                # Verify the uploaded assignment
-                submission_buttons = wait.until(ec.visibility_of_all_elements_located((By.LINK_TEXT, "Submission")))
-                submission_buttons[-1].click()
-                driver.get("https://lms.bahria.edu.pk/Student/Assignments.php")
-                time.sleep(5)
-                # # Determine the file extension
-                # uploaded_file_extension = os.path.splitext(file_path)[1].lower()
-                # file_type_to_wait = None
-                # # Determine the file type to wait for
-                # # the file to finish downloading
-                # if uploaded_file_extension == ".pdf":
-                #     file_type_to_wait = ".pdf"
-                # elif uploaded_file_extension == ".docx":
-                #     file_type_to_wait = ".docx"
-                # else:
-                #     print(f"Unsupported file extension: {uploaded_file_extension}")
-                #     file_type_to_wait = None
-                # if file_type_to_wait:
-                #     # Define a custom expected condition to wait for the file to finish downloading
-                #     def file_downloaded(d):
-                #         files = d.find_elements(By.XPATH, f"//a[contains(@href, '{file_type_to_wait}')]")
-                #         return len(files) != 0
-                #     # Wait for the file to finish downloading
-                #     wait.until(lambda d: file_downloaded(driver))
-                # Specify the pattern to match for the downloaded file
-                file_pattern = r"02-134212-019-\d+-\d{8}-\d{6}[ap]m"
+    def edit_courses(self):
+        self.course_editor = CourseEditor(self.root, self.courses, self.update_courses)
 
-                # Find the downloaded file based on the pattern
-                downloads_folder = os.path.expanduser("~") + "/Downloads/"
-                matching_files = [file for file in glob.glob(downloads_folder + "*") if
-                                  re.match(file_pattern, os.path.basename(file))]
+    def update_courses(self, new_courses):
+        self.courses = new_courses
+        all_data = {}
+        if os.path.exists(self.credentials_file):
+            with open(self.credentials_file, "r") as f:
+                all_data = json.load(f)
 
-                if matching_files:
-                    matching_files.sort(key=lambda file: os.path.getmtime(file), reverse=True)
-                    downloaded_file_path = matching_files[0]  # Get the most recently downloaded file
-                    # Compare the uploaded file and the downloaded file
-                    if cmp(file_path, downloaded_file_path):
-                        print(f"The uploaded file and the downloaded file are the same: {file_name}")
-                    else:
-                        print(f"The uploaded file and the downloaded file are different: {file_name}")
-                        os.startfile(downloaded_file_path)  # Open the file
-                else:
-                    print(f"No matching file found for pattern '{file_pattern}'.")
+        user_data = {"courses": new_courses}
+        all_data[self.current_user] = user_data
 
-            else:
-                print(f"Assignment file '{file_name}' does not exist for '{course}'.")
-    else:
-        print(f"No assignment files specified for '{course}'.")
+        with open(self.credentials_file, "w") as f:
+            json.dump(all_data, f)
 
-# Close the browser
-driver.quit()
+    def upload_assignment(self):
+        if not self.courses:
+            messagebox.showerror("Error", "Please add/edit courses first.")
+            return
+
+        self.assignment_uploader = AssignmentUploader(self.root, self.courses, self.current_user, self.enrollment,
+                                                      self.password, self.institute)
+
+    def logout(self):
+        self.current_user = None
+        self.courses = {}
+        self.institute_var.set("Select Institute")
+        self.login_frame.pack()
+
+
+class CourseEditor:
+    def __init__(self, master, current_courses, callback):
+        self.master = master
+        self.current_courses = current_courses
+        self.callback = callback
+
+        self.editor_window = tk.Toplevel(master)
+        self.editor_window.title("Edit Courses")
+
+        self.course_listbox = tk.Listbox(self.editor_window, selectmode=tk.MULTIPLE)
+        self.course_listbox.pack(padx=10, pady=10)
+
+        self.populate_listbox()
+
+        tk.Button(self.editor_window, text="Add Course", command=self.add_course).pack(pady=5)
+        tk.Button(self.editor_window, text="Delete Selected", command=self.delete_selected).pack(pady=5)
+        tk.Button(self.editor_window, text="Save", command=self.save).pack(pady=10)
+
+    def populate_listbox(self):
+        for course, alias in self.current_courses.items():
+            self.course_listbox.insert(tk.END, f"{course} ({alias})")
+
+    def add_course(self):
+        course = simpledialog.askstring("Add Course", "Enter Course Name:")
+        if course:
+            alias = simpledialog.askstring("Add Alias", "Enter Alias:")
+            if alias:
+                self.current_courses[course] = alias
+                self.course_listbox.insert(tk.END, f"{course} ({alias})")
+
+    def delete_selected(self):
+        selected_indices = self.course_listbox.curselection()
+        for index in reversed(selected_indices):
+            del self.current_courses[list(self.current_courses.keys())[index]]
+            self.course_listbox.delete(index)
+
+    def save(self):
+        self.callback(self.current_courses)
+        self.editor_window.destroy()
+
+
+class AssignmentUploader:
+    def __init__(self, master, courses, current_user, enrollment, password, institute):
+        self.institute = institute
+        self.password = password
+        self.enrollment = enrollment
+        self.master = master
+        self.courses = courses
+        self.current_user = current_user
+
+        self.upload_window = tk.Toplevel(master)
+        self.upload_window.title("Upload Assignment")
+
+        tk.Label(self.upload_window, text="Select a Course:").pack(pady=10)
+        self.course_var = tk.StringVar()
+        self.course_var.set("Select Course")
+        self.course_dropdown = tk.OptionMenu(self.upload_window, self.course_var, *self.courses.keys())
+        self.course_dropdown.pack(pady=10)
+
+        tk.Button(self.upload_window, text="Upload Manually", command=self.upload_manually).pack(pady=5)
+        tk.Button(self.upload_window, text="Back", command=self.upload_window.destroy).pack(pady=5)
+
+    def upload_manually(self):
+        course = self.course_var.get()
+
+        if course not in self.courses:
+            messagebox.showerror("Error", "Invalid course name.")
+            return
+
+        file_path = filedialog.askopenfilename(title="Select a File")
+
+        if file_path:
+            self.upload_window.destroy()
+            self.upload_thread = threading.Thread(target=self.upload_file, args=(course, file_path))
+            self.upload_thread.start()
+
+    def upload_file(self, course, file_path):
+        # Use Selenium to log in and upload the file
+        chrome_options = Options()
+        chrome_options.add_argument("start-maximized")
+        driver = webdriver.Chrome(
+            service=ChromeService(ChromeDriverManager().install()),
+            options=chrome_options)
+        driver.get("https://cms.bahria.edu.pk/Logins/Student/Login.aspx")
+
+        def wait_for_page(t_seconds):
+            waiting = WebDriverWait(driver, t_seconds)
+            waiting.until(lambda drive: drive.execute_script("return document.readyState") == "complete")
+
+        enrollment_input = driver.find_element(By.ID, "BodyPH_tbEnrollment")
+        enrollment_input.send_keys(self.enrollment)
+
+        password_input = driver.find_element(By.ID, "BodyPH_tbPassword")
+        password_input.send_keys(self.password)
+
+        institute_select = Select(driver.find_element(By.ID, "BodyPH_ddlInstituteID"))
+        institute_select.select_by_visible_text(self.institute)
+
+        driver.find_element(By.ID, "BodyPH_btnLogin").click()
+        # Wait for the element to be clickable
+        element = WebDriverWait(driver, 30).until(
+            ec.element_to_be_clickable(
+                (By.CSS_SELECTOR, 'a.list-group-item[href="https://cms.bahria.edu.pk/Sys/Common/GoToLMS.aspx"]'))
+        )
+
+        # Click the element
+        element.click()
+
+        # Switch to the new tab with LMS
+        driver.switch_to.window(driver.window_handles[-1])
+
+        # Open the LMS Assignments page
+        driver.get("https://lms.bahria.edu.pk/Student/Assignments.php")
+
+        wait_for_page(15)
+
+        # Select the course
+        try:
+            course_dropdown = Select(driver.find_element(By.ID, "courseId"))
+            course_dropdown.select_by_visible_text(course)
+        except NoSuchElementException:
+            print(f"Course '{course}' not found.")
+            driver.quit()
+            return
+
+        # Click on the "Upload" button
+        try:
+            button = WebDriverWait(driver, 3).until(
+                ec.presence_of_element_located((By.LINK_TEXT, "Submit"))
+            )
+
+            if button:
+                button.click()
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            driver.quit()
+            messagebox.showerror("Error", "No submission available")
+            return
+
+        # Choose the file to upload
+        file_input = driver.find_element(By.ID, "exampleInputFile")
+        file_input.send_keys(file_path)
+
+        # Wait for the submission to complete
+        wait = WebDriverWait(driver, 30)  # Adjust the timeout as needed
+
+        # Wait for the modal to appear
+        modal_footer = wait.until(ec.visibility_of_element_located((By.CLASS_NAME, "modal-footer")))
+
+        # Find the submit button within the modal footer
+        submit_button = modal_footer.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        # Check if the submit button is enabled
+        if submit_button.is_enabled():
+            # Click the submit button
+            submit_button.click()
+            messagebox.showinfo("File Uploaded Successfully!", "Exit Chrome")
+        else:
+            messagebox.showerror("Error", "Submit Button is disabled.")
+
+        # Implement the file comparison logic here
+        # Verify the uploaded assignment
+        submission_buttons = wait.until(ec.visibility_of_all_elements_located((By.LINK_TEXT, "Submission")))
+        submission_buttons[-1].click()
+
+
+if __name__ == "__main__":
+    app = LMSUploader()
+
